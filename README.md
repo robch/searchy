@@ -1,4 +1,4 @@
-# Playwright Web Scraper
+# Searchy - the Playwright based web search tool
 
 ## Overview
 
