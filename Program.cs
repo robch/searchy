@@ -228,7 +228,7 @@ namespace PlaywrightWebScraper
                 await page.GotoAsync(url);
 
                 // Get the main content text
-                var content = await page.ContentAsync();
+                var content = await GetContentWithRetries(page);
 
                 if (content.Contains("Rate limit is exceeded. Try again in"))
                 {
@@ -247,7 +247,27 @@ namespace PlaywrightWebScraper
             }
             catch (Exception ex)
             {
-                return $"Error fetching content from {url}: {ex.Message}";
+                return $"Error fetching content from {url}: {ex.Message}\n{ex.StackTrace}";
+            }
+        }
+
+        private static async Task<string> GetContentWithRetries(IPage page, int retries = 3)
+        {
+            var tryCount = retries + 1;
+            while (true)
+            {
+                try
+                {
+                    var content = await page.ContentAsync();
+                    return content;
+                }
+                catch (Exception ex)
+                {
+                    var rethrow = --tryCount == 0 || !ex.Message.Contains("navigating");
+                    if (rethrow) throw;
+
+                    await Task.Delay(1000);
+                }
             }
         }
 

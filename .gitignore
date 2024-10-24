@@ -1,3 +1,4 @@
 .ai/data/**
+.vs/**
 bin/**
 obj/**
