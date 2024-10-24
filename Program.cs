@@ -1,16 +1,59 @@
-﻿using Microsoft.Playwright;
+using Microsoft.Playwright;
 using HtmlAgilityPack;
 
 namespace PlaywrightWebScraper
 {
     class Program
     {
-        static async Task Main(string[] args)
+        public static async Task<int> Main(string[] args)
+        {
+            if (args.Length == 0 || (args[0] != "search" && args[0] != "get"))
+            {
+                return ShowUsage();
+            }
+
+            var verb = args[0];
+            var commandArgs = args.Skip(1).ToArray();
+
+            return verb switch
+            {
+                "search" => await HandleSearchCommand(commandArgs),
+                "get" => await HandleGetCommand(commandArgs),
+                _ => 1,
+            };
+        }
+
+        private static int ShowUsage()
+        {
+            Console.WriteLine("Searchy - A simple web search and content retrieval tool using Playwright");
+            Console.WriteLine();
+            Console.WriteLine("USAGE: searchy get \"URL\" [...]");
+            Console.WriteLine("   OR: searchy search \"TERMS\" [...]");
+            Console.WriteLine();
+            Console.WriteLine("  COMMANDS:");
+            Console.WriteLine();
+            Console.WriteLine("    get        Downloads content from URL(s)");
+            Console.WriteLine("    search     Searches for content w/ Bing or Google");
+            Console.WriteLine();
+            Console.WriteLine("  OPTIONS:");
+            Console.WriteLine();
+            Console.WriteLine("    --strip    Strip HTML tags from downloaded content");
+            Console.WriteLine();
+            Console.WriteLine("  SEARCH OPTIONS:");
+            Console.WriteLine();
+            Console.WriteLine("    --bing     Use Bing search engine");
+            Console.WriteLine("    --google   Use Google search engine (default)");
+            Console.WriteLine("    --get      Download content from search results (default: false)");
+            Console.WriteLine("    --max N    Maximum number of search results (default: 10)");
+            return 1;
+        }
+
+        private static async Task<int> HandleSearchCommand(string[] args)
         {
             // Default values
             string searchEngine = "google"; // Default to Google
             int maxResults = 10; // Default max results
-            bool downloadContent = false;
+            bool getContent = false;
             bool stripHtml = true;
             List<string> searchTerms = new List<string>();
 
@@ -25,9 +68,9 @@ namespace PlaywrightWebScraper
                 {
                     searchEngine = "bing";
                 }
-                else if (args[i] == "--content")
+                else if (args[i] == "--get")
                 {
-                    downloadContent = true;
+                    getContent = true;
                 }
                 else if (args[i] == "--strip")
                 {
@@ -43,7 +86,7 @@ namespace PlaywrightWebScraper
                     else
                     {
                         Console.WriteLine("Invalid value for --max");
-                        return;
+                        return 1;
                     }
                 }
                 else if (args[i].StartsWith("--"))
@@ -58,19 +101,79 @@ namespace PlaywrightWebScraper
             }
 
             // Build the search query
-            string query = string.Join(" ", searchTerms);
-
+            var query = string.Join(" ", searchTerms);
             if (string.IsNullOrEmpty(query))
             {
                 Console.WriteLine("No search terms provided.");
-                return;
+                return 1;
             }
 
             // Perform the search using Playwright
-            await PerformSearchWithPlaywright(searchEngine, query, maxResults, downloadContent, stripHtml);
+            await SearchResultsFromQuery(searchEngine, query, maxResults, getContent, stripHtml);
+            return 0;
         }
 
-        static async Task PerformSearchWithPlaywright(string searchEngine, string query, int maxResults, bool downloadContent, bool stripHtml)
+        private static async Task<int> HandleGetCommand(string[] args)
+        {
+            // Default values
+            var urls = new List<string>();
+            var stripHtml = false;
+
+            // Parse command-line arguments
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("http"))
+                {
+                    urls.Add(args[i]);
+                }
+                else if (args[i] == "-")
+                {
+                    var lines = ReadAllLinesFromStdin()
+                        .Where(l => !string.IsNullOrWhiteSpace(l))
+                        .Select(l => l.Trim());
+                    urls.AddRange(lines);
+                }
+                else if (args[i].StartsWith("@") && File.Exists(args[i].Substring(1)))
+                {
+                    var lines = File.ReadAllLines(args[i].Substring(1))
+                        .Where(l => !string.IsNullOrWhiteSpace(l))
+                        .Select(l => l.Trim());
+                    urls.AddRange(lines);
+                }
+                else if (args[i] == "--strip")
+                {
+                    stripHtml = true;
+                }
+                else
+                {
+                    Console.WriteLine($"Unknown parameter: {args[i]}");
+                    return 1;
+                }
+            }
+
+            // Check if any URLs were provided
+            if (urls.Count == 0)
+            {
+                Console.WriteLine("No URLs provided.");
+                return 1;
+            }
+
+            // Check for invalid URLs
+            var badUrls = urls.Where(l => !l.StartsWith("http")).ToList();
+            if (badUrls.Any())
+            {
+                Console.WriteLine(badUrls.Count == 1
+                    ? $"Invalid URL: {badUrls[0]}"
+                    : $"Invalid URLs:\n" + string.Join(Environment.NewLine, badUrls.Select(u => $"  {u}")));
+                return 1;
+            }
+
+            // Get content from the URLs
+            await GetPageContentFromURLs(urls, stripHtml);
+            return 0;
+        }
+
+        private static async Task SearchResultsFromQuery(string searchEngine, string query, int maxResults, bool getContent, bool stripHtml)
         {
             // Initialize Playwright
             using var playwright = await Playwright.CreateAsync();
@@ -103,7 +206,7 @@ namespace PlaywrightWebScraper
                 return;
             }
 
-            if (!downloadContent)
+            if (!getContent)
             {
                 foreach (var url in urls)
                 {
@@ -112,19 +215,10 @@ namespace PlaywrightWebScraper
                 return;
             }
 
-            foreach (var url in urls)
-            {
-                Console.WriteLine("---separator---");
-                Console.WriteLine($"url: {url}");
-                Console.WriteLine("---separator---");
-                string content = await FetchPageContent(page, url, stripHtml);
-                Console.WriteLine(content);
-            }
-
-            Console.WriteLine("---separator---");
+            await GetPageContentFromURLs(page, urls, stripHtml);
         }
 
-        static async Task<List<string>> ExtractGoogleSearchResults(IPage page, int maxResults)
+        private static async Task<List<string>> ExtractGoogleSearchResults(IPage page, int maxResults)
         {
             var urls = new List<string>();
             int currentPage = 1;
@@ -172,7 +266,7 @@ namespace PlaywrightWebScraper
             return urls.Take(maxResults).ToList();
         }
 
-        static async Task<List<string>> ExtractBingSearchResults(IPage page, int maxResults)
+        private static async Task<List<string>> ExtractBingSearchResults(IPage page, int maxResults)
         {
             var urls = new List<string>();
             int currentPage = 1;
@@ -220,7 +314,39 @@ namespace PlaywrightWebScraper
             return urls.Take(maxResults).ToList();
         }
 
-        static async Task<string> FetchPageContent(IPage page, string url, bool stripHtml)
+        private static async Task GetPageContentFromURLs(List<string> urls, bool stripHtml)
+        {
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            var context = await browser.NewContextAsync();
+            var page = await context.NewPageAsync();
+
+            await GetPageContentFromURLs(page, urls, stripHtml);
+        }
+
+        private static async Task GetPageContentFromURLs(IPage page, List<string> urls, bool stripHtml)
+        {
+            if (urls.Count == 1)
+            {
+                var url = urls[0];
+                var content = await FetchPageContent(page, url, stripHtml);
+                Console.WriteLine(content);
+                return;
+            }
+
+            foreach (var url in urls)
+            {
+                Console.WriteLine("---separator---");
+                Console.WriteLine($"url: {url}");
+                Console.WriteLine("---separator---");
+                string content = await FetchPageContent(page, url, stripHtml);
+                Console.WriteLine(content);
+            }
+
+            Console.WriteLine("---separator---");
+        }
+
+        private static async Task<string> FetchPageContent(IPage page, string url, bool stripHtml)
         {
             try
             {
@@ -228,7 +354,7 @@ namespace PlaywrightWebScraper
                 await page.GotoAsync(url);
 
                 // Get the main content text
-                var content = await GetContentWithRetries(page);
+                var content = await FetchPageContentWithRetries(page);
 
                 if (content.Contains("Rate limit is exceeded. Try again in"))
                 {
@@ -251,7 +377,7 @@ namespace PlaywrightWebScraper
             }
         }
 
-        private static async Task<string> GetContentWithRetries(IPage page, int retries = 3)
+        private static async Task<string> FetchPageContentWithRetries(IPage page, int retries = 3)
         {
             var tryCount = retries + 1;
             while (true)
@@ -271,11 +397,21 @@ namespace PlaywrightWebScraper
             }
         }
 
-        static string StripHtmlContent(string html)
+        private static string StripHtmlContent(string html)
         {
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
             return doc.DocumentNode.InnerText;
         }
-    }
+ 
+        private static IEnumerable<string?> ReadAllLinesFromStdin()
+        {
+            while (true)
+            {
+                var line = Console.ReadLine();
+                if (line == null) yield break;
+                yield return line;
+            }
+        }
+   }
 }
