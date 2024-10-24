@@ -1,5 +1,7 @@
 using Microsoft.Playwright;
 using HtmlAgilityPack;
+using System.Text.RegularExpressions;
+using System.Net;
 
 namespace PlaywrightWebScraper
 {
@@ -32,30 +34,32 @@ namespace PlaywrightWebScraper
             Console.WriteLine();
             Console.WriteLine("  COMMANDS:");
             Console.WriteLine();
-            Console.WriteLine("    get        Downloads content from URL(s)");
-            Console.WriteLine("    search     Searches for content w/ Bing or Google");
+            Console.WriteLine("    get              Downloads content from URL(s)");
+            Console.WriteLine("    search           Searches for content w/ Bing or Google");
             Console.WriteLine();
             Console.WriteLine("  OPTIONS:");
             Console.WriteLine();
-            Console.WriteLine("    --strip    Strip HTML tags from downloaded content");
+            Console.WriteLine("    --strip          Strip HTML tags from downloaded content");
+            Console.WriteLine("    --save [FOLDER]  Save downloaded content to disk");
             Console.WriteLine();
             Console.WriteLine("  SEARCH OPTIONS:");
             Console.WriteLine();
-            Console.WriteLine("    --bing     Use Bing search engine");
-            Console.WriteLine("    --google   Use Google search engine (default)");
-            Console.WriteLine("    --get      Download content from search results (default: false)");
-            Console.WriteLine("    --max N    Maximum number of search results (default: 10)");
+            Console.WriteLine("    --bing           Use Bing search engine");
+            Console.WriteLine("    --google         Use Google search engine (default)");
+            Console.WriteLine("    --get            Download content from search results (default: false)");
+            Console.WriteLine("    --max NUMBER     Maximum number of search results (default: 10)");
             return 1;
         }
 
         private static async Task<int> HandleSearchCommand(string[] args)
         {
             // Default values
-            string searchEngine = "google"; // Default to Google
-            int maxResults = 10; // Default max results
-            bool getContent = false;
-            bool stripHtml = true;
-            List<string> searchTerms = new List<string>();
+            var searchTerms = new List<string>();
+            var searchEngine = "google"; // Default to Google
+            var maxResults = 10; // Default max results
+            var getContent = false;
+            var stripHtml = true;
+            string? saveToFolder = null;
 
             // Parse command-line arguments
             for (int i = 0; i < args.Length; i++)
@@ -75,6 +79,19 @@ namespace PlaywrightWebScraper
                 else if (args[i] == "--strip")
                 {
                     stripHtml = true;
+                }
+                else if (args[i] == "--save")
+                {
+                    getContent = true;
+                    if (args.Length > i + 1 && !args[i + 1].StartsWith("--"))
+                    {
+                        saveToFolder = args[i + 1];
+                        i++; // Skip the next argument since it's the folder
+                    }
+                    else
+                    {
+                        saveToFolder = Environment.CurrentDirectory;
+                    }
                 }
                 else if (args[i] == "--max" && i + 1 < args.Length)
                 {
@@ -109,7 +126,7 @@ namespace PlaywrightWebScraper
             }
 
             // Perform the search using Playwright
-            await SearchResultsFromQuery(searchEngine, query, maxResults, getContent, stripHtml);
+            await SearchResultsFromQuery(searchEngine, query, maxResults, getContent, stripHtml, saveToFolder);
             return 0;
         }
 
@@ -118,6 +135,7 @@ namespace PlaywrightWebScraper
             // Default values
             var urls = new List<string>();
             var stripHtml = false;
+            string? saveToFolder = null;
 
             // Parse command-line arguments
             for (int i = 0; i < args.Length; i++)
@@ -144,6 +162,18 @@ namespace PlaywrightWebScraper
                 {
                     stripHtml = true;
                 }
+                else if (args[i] == "--save")
+                {
+                    if (args.Length > i + 1 && !args[i + 1].StartsWith("--"))
+                    {
+                        saveToFolder = args[i + 1];
+                        i++; // Skip the next argument since it's the folder
+                    }
+                    else
+                    {
+                        saveToFolder = Environment.CurrentDirectory;
+                    }
+                }
                 else
                 {
                     Console.WriteLine($"Unknown parameter: {args[i]}");
@@ -169,11 +199,11 @@ namespace PlaywrightWebScraper
             }
 
             // Get content from the URLs
-            await GetPageContentFromURLs(urls, stripHtml);
+            await GetPageContentFromURLs(urls, stripHtml, saveToFolder);
             return 0;
         }
 
-        private static async Task SearchResultsFromQuery(string searchEngine, string query, int maxResults, bool getContent, bool stripHtml)
+        private static async Task SearchResultsFromQuery(string searchEngine, string query, int maxResults, bool getContent, bool stripHtml, string? saveToFolder)
         {
             // Initialize Playwright
             using var playwright = await Playwright.CreateAsync();
@@ -215,7 +245,7 @@ namespace PlaywrightWebScraper
                 return;
             }
 
-            await GetPageContentFromURLs(page, urls, stripHtml);
+            await GetPageContentFromURLs(page, urls, stripHtml, saveToFolder);
         }
 
         private static async Task<List<string>> ExtractGoogleSearchResults(IPage page, int maxResults)
@@ -314,22 +344,22 @@ namespace PlaywrightWebScraper
             return urls.Take(maxResults).ToList();
         }
 
-        private static async Task GetPageContentFromURLs(List<string> urls, bool stripHtml)
+        private static async Task GetPageContentFromURLs(List<string> urls, bool stripHtml, string? saveToFolder)
         {
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
             var context = await browser.NewContextAsync();
             var page = await context.NewPageAsync();
 
-            await GetPageContentFromURLs(page, urls, stripHtml);
+            await GetPageContentFromURLs(page, urls, stripHtml, saveToFolder);
         }
 
-        private static async Task GetPageContentFromURLs(IPage page, List<string> urls, bool stripHtml)
+        private static async Task GetPageContentFromURLs(IPage page, List<string> urls, bool stripHtml, string? saveToFolder)
         {
             if (urls.Count == 1)
             {
                 var url = urls[0];
-                var content = await FetchPageContent(page, url, stripHtml);
+                var content = await FetchPageContent(page, url, stripHtml, saveToFolder);
                 Console.WriteLine(content);
                 return;
             }
@@ -339,14 +369,15 @@ namespace PlaywrightWebScraper
                 Console.WriteLine("---separator---");
                 Console.WriteLine($"url: {url}");
                 Console.WriteLine("---separator---");
-                string content = await FetchPageContent(page, url, stripHtml);
+
+                var content = await FetchPageContent(page, url, stripHtml, saveToFolder);
                 Console.WriteLine(content);
             }
 
             Console.WriteLine("---separator---");
         }
 
-        private static async Task<string> FetchPageContent(IPage page, string url, bool stripHtml)
+        private static async Task<string> FetchPageContent(IPage page, string url, bool stripHtml, string? saveToFolder)
         {
             try
             {
@@ -361,12 +392,18 @@ namespace PlaywrightWebScraper
                     // Rate limit exceeded, wait and try again
                     var seconds = int.Parse(content.Split("Try again in ")[1].Split(" seconds.")[0]);
                     await Task.Delay(seconds * 1000);
-                    return await FetchPageContent(page, url, stripHtml);
+                    return await FetchPageContent(page, url, stripHtml, saveToFolder);
                 }
 
                 if (stripHtml)
                 {
                     content = StripHtmlContent(content);
+                }
+
+                if (!string.IsNullOrEmpty(saveToFolder))
+                {
+                    var fileName = GenerateUniqueFileNameFromUrl(url, saveToFolder);
+                    File.WriteAllText(fileName, content);
                 }
 
                 return content;
@@ -401,9 +438,73 @@ namespace PlaywrightWebScraper
         {
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
-            return doc.DocumentNode.InnerText;
+
+            var innerText = ReplaceHtmlEntities(doc.DocumentNode.InnerText);
+            var innerTextLines = innerText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            var lines = new List<string>();
+            var blanks = new List<string>();
+            foreach (var line in innerTextLines)
+            {
+                var trimmed = line.Trim(new[] { ' ', '\t', '\r', '\n', '\v', '\f', '\u00A0', '\u200B' });
+                if (string.IsNullOrEmpty(trimmed))
+                {
+                    blanks.Add(line);
+                    continue;
+                }
+
+                var addBlanks = Math.Min(blanks.Count, 1);
+                if (addBlanks > 0)
+                {
+                    while (addBlanks-- > 0)
+                    {
+                        lines.Add(string.Empty);
+                    }
+                    blanks.Clear();
+                }
+
+                lines.Add(line);
+            }
+
+            return string.Join(Environment.NewLine, lines);
         }
- 
+
+        private static string ReplaceHtmlEntities(string textWithHtmlEntities)
+        {
+            return WebUtility.HtmlDecode(textWithHtmlEntities);
+        }
+
+        private static string GenerateUniqueFileNameFromUrl(string url, string saveToFolder)
+        {
+            EnsureDirectoryExists(saveToFolder);
+            
+            var uri = new Uri(url);
+            var path = uri.Host + uri.AbsolutePath + uri.Query;
+
+            var parts = path.Split(_invalidFileNameChars, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .ToArray();
+            var check = Path.Combine(saveToFolder, string.Join("-", parts));
+            if (!File.Exists(check)) return check;
+
+            while (true)
+            {
+                var guidPart = Guid.NewGuid().ToString().Substring(0, 8);
+                var linuxFileTimePart = DateTime.Now.ToFileTimeUtc().ToString();
+                var tryThis = check + "-" + linuxFileTimePart + "-" + guidPart;
+                if (!File.Exists(tryThis)) return tryThis;
+            }
+        }
+
+        private static void EnsureDirectoryExists(string saveToFolder)
+        {
+            if (!Directory.Exists(saveToFolder))
+            {
+                Directory.CreateDirectory(saveToFolder);
+            }
+        }
+
         private static IEnumerable<string?> ReadAllLinesFromStdin()
         {
             while (true)
@@ -413,5 +514,17 @@ namespace PlaywrightWebScraper
                 yield return line;
             }
         }
-   }
+
+        private static char[] GetInvalidFileNameChars()
+        {
+            var invalidCharList = Path.GetInvalidFileNameChars().ToList();
+            for (char c = (char)0; c < 128; c++)
+            {
+                if (!char.IsLetterOrDigit(c)) invalidCharList.Add(c);
+            }
+            return invalidCharList.Distinct().ToArray();
+        }
+
+        private static char[] _invalidFileNameChars = GetInvalidFileNameChars();
+    }
 }
