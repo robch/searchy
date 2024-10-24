@@ -39,6 +39,7 @@ namespace PlaywrightWebScraper
             Console.WriteLine();
             Console.WriteLine("  OPTIONS:");
             Console.WriteLine();
+            Console.WriteLine("    --headless       Run in headless mode (default: false)");
             Console.WriteLine("    --strip          Strip HTML tags from downloaded content");
             Console.WriteLine("    --save [FOLDER]  Save downloaded content to disk");
             Console.WriteLine();
@@ -54,6 +55,7 @@ namespace PlaywrightWebScraper
         private static async Task<int> HandleSearchCommand(string[] args)
         {
             // Default values
+            var headless = false;
             var searchTerms = new List<string>();
             var searchEngine = "google"; // Default to Google
             var maxResults = 10; // Default max results
@@ -64,7 +66,11 @@ namespace PlaywrightWebScraper
             // Parse command-line arguments
             for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "--google")
+                if (args[i] == "--headless")
+                {
+                    headless = true;
+                }
+                else if (args[i] == "--google")
                 {
                     searchEngine = "google";
                 }
@@ -126,13 +132,14 @@ namespace PlaywrightWebScraper
             }
 
             // Perform the search using Playwright
-            await SearchResultsFromQuery(searchEngine, query, maxResults, getContent, stripHtml, saveToFolder);
+            await SearchResultsFromQuery(searchEngine, query, maxResults, getContent, stripHtml, saveToFolder, headless);
             return 0;
         }
 
         private static async Task<int> HandleGetCommand(string[] args)
         {
             // Default values
+            var headless = false;
             var urls = new List<string>();
             var stripHtml = false;
             string? saveToFolder = null;
@@ -140,7 +147,11 @@ namespace PlaywrightWebScraper
             // Parse command-line arguments
             for (int i = 0; i < args.Length; i++)
             {
-                if (args[i].StartsWith("http"))
+                if (args[i] == "--headless")
+                {
+                    headless = true;
+                }
+                else if (args[i].StartsWith("http"))
                 {
                     urls.Add(args[i]);
                 }
@@ -199,15 +210,15 @@ namespace PlaywrightWebScraper
             }
 
             // Get content from the URLs
-            await GetPageContentFromURLs(urls, stripHtml, saveToFolder);
+            await GetPageContentFromURLs(urls, stripHtml, saveToFolder, headless);
             return 0;
         }
 
-        private static async Task SearchResultsFromQuery(string searchEngine, string query, int maxResults, bool getContent, bool stripHtml, string? saveToFolder)
+        private static async Task SearchResultsFromQuery(string searchEngine, string query, int maxResults, bool getContent, bool stripHtml, string? saveToFolder, bool headless)
         {
             // Initialize Playwright
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = headless });
             var context = await browser.NewContextAsync();
             var page = await context.NewPageAsync();
 
@@ -344,10 +355,10 @@ namespace PlaywrightWebScraper
             return urls.Take(maxResults).ToList();
         }
 
-        private static async Task GetPageContentFromURLs(List<string> urls, bool stripHtml, string? saveToFolder)
+        private static async Task GetPageContentFromURLs(List<string> urls, bool stripHtml, string? saveToFolder, bool headless)
         {
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = headless });
             var context = await browser.NewContextAsync();
             var page = await context.NewPageAsync();
 
