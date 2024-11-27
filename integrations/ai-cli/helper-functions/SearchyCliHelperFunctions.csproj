@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <AICLIExtensionReferencePath Condition="'$(AICLIExtensionReferencePath)' == ''">C:\src\ai-cli\src\ai\bin\Debug\net8.0</AICLIExtensionReferencePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Azure.AI.CLI.Extensions.HelperFunctions">
+      <HintPath>$(AICLIExtensionReferencePath)\Azure.AI.CLI.Extensions.HelperFunctions.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

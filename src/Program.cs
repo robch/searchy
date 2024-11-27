@@ -159,7 +159,7 @@ namespace PlaywrightWebScraper
                 {
                     var lines = ReadAllLinesFromStdin()
                         .Where(l => !string.IsNullOrWhiteSpace(l))
-                        .Select(l => l.Trim());
+                        .Select(l => l!.Trim());
                     urls.AddRange(lines);
                 }
                 else if (args[i].StartsWith("@") && File.Exists(args[i].Substring(1)))

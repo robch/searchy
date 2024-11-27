@@ -1,4 +1,4 @@
 .ai/data/**
 .vs/**
-bin/**
-obj/**
+**/bin/**
+**/obj/**
