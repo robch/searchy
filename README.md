@@ -86,7 +86,7 @@ searchy search "Playwright .NET" --google --get --strip
 
 ## Integration w/ Azure AI CLI
 
-The application can be integrated with the Azure AI CLI to perform web searches and analyze the content of search results using GenAI models, such as Azure OpenAI's GPT-4o.
+The application can be integrated with the [Azure AI CLI](https://github.com/Azure/azure-ai-cli) to perform web searches and analyze the content of search results using GenAI models, such as Azure OpenAI's GPT-4o.
 
 1. Navigate to the `helper-functions` directory:
    ```bash
